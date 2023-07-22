@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "980400615341",
+    "project_id": "fir-storage-gallery-674b5",
+    "storage_bucket": "fir-storage-gallery-674b5.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:980400615341:android:66c68a3d142b011c883b24",
+        "android_client_info": {
+          "package_name": "com.galleryupload"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "980400615341-gblp859c0qnj6hcacn2qkv03u9jabh43.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAPkDbf9Kw7xYvBczK0gda7KbtMjY02lec"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "980400615341-gblp859c0qnj6hcacn2qkv03u9jabh43.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
