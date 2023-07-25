@@ -23,18 +23,22 @@ import {realmContext, TestRealm} from './Realm';
 import {ProgressView} from '@react-native-community/progress-view';
 import NetInfo from '@react-native-community/netinfo';
 import moment from 'moment';
-import {styles} from './styles';
+import {styles} from './Styles';
 
 interface MainScreenProps {}
 interface ImageSet {
   uri: any;
   isOnline: boolean;
-  progress: number;
   fileName: string;
+}
+interface ImageProgress {
+  uri: any;
+  progress: number;
 }
 const {useQuery, useRealm} = realmContext;
 
 const MainScreen: React.FC<MainScreenProps> = () => {
+  const [imgProgressList, setImgProgressList] = useState<ImageProgress[]>([]);
   const [imagesList, setImagesList] = useState<ImageSet[]>([]);
   const [filteredImageList, setFilteredImageList] = useState<ImageSet[]>([]);
   const [isModalVisible, setModalVisible] = useState(false);
@@ -110,7 +114,7 @@ const MainScreen: React.FC<MainScreenProps> = () => {
       imageListCopy.push({
         uri: image.uri,
         isOnline: false,
-        progress: 0,
+        //progress: 0,
         fileName: filename,
       });
 
@@ -135,28 +139,44 @@ const MainScreen: React.FC<MainScreenProps> = () => {
     const storageRef = storage().ref('images').child(image.fileName);
     const task = storageRef.putFile(pathToFile);
 
-    // task.on('state_changed', taskSnapshot => {
-    //   const percentage =
-    //     taskSnapshot.bytesTransferred / taskSnapshot.totalBytes;
+    const imgProgressListCopy = [...imgProgressList];
+    imgProgressListCopy.push({
+      uri: uri,
+      progress: 0,
+    });
 
-    //   console.log('percentage', percentage);
+    console.log('ImageList', imageListCopy);
+    setImgProgressList(imgProgressListCopy);
 
-    //   const updatedImageList = imageListCopy.map(item => {
-    //     if (image.uri === item.uri) {
-    //       return {...item, progress: percentage, isOnline: true};
-    //     }
-    //     return item;
-    //   });
-    //   setImagesList(updatedImageList);
-    // });
+    task.on('state_changed', taskSnapshot => {
+      const percentage =
+        taskSnapshot.bytesTransferred / taskSnapshot.totalBytes;
+
+      console.log('percentage', percentage);
+
+      const updatedImageList = imgProgressListCopy.map(image => {
+        if (image.uri === uri) {
+          return {...image, progress: percentage};
+        }
+        return image;
+      });
+      setImgProgressList(updatedImageList);
+    });
 
     task.then(() => {
-      const updatedImageList = imageListCopy.map(item => {
-        if (image.uri === item.uri) {
-          return {...item, progress: 100, isOnline: true};
+      const updatedImageList = imageListCopy.map(image => {
+        if (image.uri === uri) {
+          return {...image, isOnline: true};
         }
-        return item;
+        return image;
       });
+      const updatedImageListForProgress = imgProgressListCopy.map(image => {
+        if (image.uri === uri) {
+          return {...image, progress: 1};
+        }
+        return image;
+      });
+      setImgProgressList(updatedImageListForProgress);
       setImagesList(updatedImageList);
 
       DeleteObjectFormRealm(image.uri);
@@ -188,31 +208,36 @@ const MainScreen: React.FC<MainScreenProps> = () => {
 
     if (myIndex >= 0) {
       imageListCopy[myIndex].isOnline = false;
-      imageListCopy[myIndex].progress = 0;
       imageListCopy[myIndex].fileName = filename;
     } else {
       imageListCopy.push({
         uri: uri,
         isOnline: false,
-        progress: 0,
         fileName: filename,
       });
     }
 
+    imgProgressList.push({
+      uri: uri,
+      progress: 0,
+    });
+
     console.log('ImageList', imageListCopy);
     setImagesList(imageListCopy);
-    const imageIndex = imageListCopy.length - 1;
 
-    task.on('state_changed', taskSnapshot => {
+    task.on('state_changed', async taskSnapshot => {
       const percentage =
         taskSnapshot.bytesTransferred / taskSnapshot.totalBytes;
-      const updatedImageList = imageListCopy.map((image, index) => {
-        if (index === imageIndex) {
+      const updatedImageList = imgProgressList.map(image => {
+        if (image.uri === uri) {
           return {...image, progress: percentage};
+        }
+        if (percentage == 1) {
+          return {...image, progress: 1};
         }
         return image;
       });
-      setImagesList(updatedImageList);
+      setImgProgressList(updatedImageList);
     });
 
     task.then(() => {
@@ -226,7 +251,6 @@ const MainScreen: React.FC<MainScreenProps> = () => {
         }
         return image;
       });
-
       setImagesList(updatedImageList);
       console.log('Image uploaded to the bucket!');
     });
@@ -292,7 +316,6 @@ const MainScreen: React.FC<MainScreenProps> = () => {
           const mobj: ImageSet = {
             uri: await ref.getDownloadURL(),
             isOnline: true,
-            progress: 1, // Add the progress property and set it to 0 initially
             fileName: await ref.fullPath.replace('images/', ''),
           };
 
@@ -305,7 +328,6 @@ const MainScreen: React.FC<MainScreenProps> = () => {
           const mobj: ImageSet = {
             uri: ref.url,
             isOnline: false,
-            progress: 0, // Add the progress property and set it to 0 initially
             fileName: ref.name,
           };
           return mobj;
@@ -323,7 +345,6 @@ const MainScreen: React.FC<MainScreenProps> = () => {
           const mobj: ImageSet = {
             uri: ref.url,
             isOnline: false,
-            progress: 0, // Add the progress property and set it to 0 initially
             fileName: ref.name,
           };
           return mobj;
@@ -402,15 +423,21 @@ const MainScreen: React.FC<MainScreenProps> = () => {
             />
           </TouchableOpacity>
         </View>
-        {!item.isOnline && (
-          <View style={styles.progressBarContainer}>
-            <ProgressView
-              progressTintColor="orange"
-              trackTintColor="blue"
-              progress={item.progress}
-            />
-          </View>
-        )}
+        {imgProgressList.map(imgProgress => {
+          if (imgProgress.uri == item.uri) {
+            if (!item.isOnline) {
+              return (
+                <View style={styles.progressBarContainer}>
+                  <ProgressView
+                    progressTintColor="orange"
+                    trackTintColor="blue"
+                    progress={imgProgress.progress}
+                  />
+                </View>
+              );
+            }
+          }
+        })}
       </View>
     );
   };
@@ -502,7 +529,7 @@ const MainScreen: React.FC<MainScreenProps> = () => {
               <TouchableOpacity
                 style={styles.deleteModalButtonContainers}
                 onPress={deleteFile}>
-                <Text style={styles.modalText}>Delete</Text>
+                <Text style={styles.deleteOrCancelText}>Delete</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.deleteModalButtonContainers}
@@ -510,7 +537,7 @@ const MainScreen: React.FC<MainScreenProps> = () => {
                   setDeleteModalVisible(false);
                   setSelectedForCancel('');
                 }}>
-                <Text style={styles.modalText}>Cancel</Text>
+                <Text style={styles.deleteOrCancelText}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </View>

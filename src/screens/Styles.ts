@@ -58,6 +58,9 @@ const styles = StyleSheet.create({
   modalText: {
     color: 'black',
   },
+  deleteOrCancelText: {
+    color: 'white',
+  },
   modalSeparator: {
     backgroundColor: 'grey',
     borderWidth: 0.5,
