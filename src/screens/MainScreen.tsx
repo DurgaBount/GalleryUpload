@@ -70,7 +70,7 @@ const MainScreen: React.FC<MainScreenProps> = () => {
 
   const openGallery = () => {
     launchImageLibrary({mediaType: 'photo'}, (res: ImagePickerResponse) => {
-      console.log('PickingPictureFailureRes:', JSON.stringify(res));
+      console.log('PickingPictureRes:', JSON.stringify(res));
 
       if (res.assets) {
         const image = res.assets[0];
@@ -107,6 +107,7 @@ const MainScreen: React.FC<MainScreenProps> = () => {
         url: image.uri,
         completed: true,
         createdAt: new Date(),
+        isOnline: false,
       });
 
       const imageListCopy = [...imagesList];
@@ -120,6 +121,22 @@ const MainScreen: React.FC<MainScreenProps> = () => {
 
       console.log('ImageList', imageListCopy);
       setImagesList(imageListCopy);
+    });
+  };
+
+  const updateIsOnlineWithRealm = (
+    imageId: Realm.BSON.ObjectId,
+    isOnline: boolean,
+  ) => {
+    realm.write(() => {
+      const imageToUpdate = realm.objectForPrimaryKey<TestRealm>(
+        'TestRealm',
+        imageId,
+      );
+
+      if (imageToUpdate) {
+        imageToUpdate.isOnline = isOnline; // Update the 'isOnline' property directly
+      }
     });
   };
 
@@ -164,6 +181,13 @@ const MainScreen: React.FC<MainScreenProps> = () => {
     });
 
     task.then(() => {
+      const myObject = data.find(item => {
+        return item.url === uri;
+      });
+
+      const objectIdToUpdate = new Realm.BSON.ObjectId(myObject?._id);
+      updateIsOnlineWithRealm(objectIdToUpdate, true);
+
       const updatedImageList = imageListCopy.map(image => {
         if (image.uri === uri) {
           return {...image, isOnline: true};
@@ -178,92 +202,12 @@ const MainScreen: React.FC<MainScreenProps> = () => {
       });
       setImgProgressList(updatedImageListForProgress);
       setImagesList(updatedImageList);
-
-      DeleteObjectFormRealm(image.uri);
       console.log('Offlie Image uploaded to the bucket!');
     });
   };
 
-  const handleImageWithiFirebaseStorage = (uri: any) => {
-    const timestamp = moment().format('YYYYMMDDHHmmssSSS');
-    const filename = `IMG${timestamp}`;
-
-    let pathToFile;
-    if (Platform.OS === 'android') {
-      pathToFile = uri;
-    } else if (Platform.OS === 'ios') {
-      pathToFile = uri.replace('file://', '');
-    }
-
-    const storageRef = storage().ref('images').child(filename);
-    const task = storageRef.putFile(pathToFile);
-
-    let imageListCopy = [...imagesList];
-
-    let myIndex = -1;
-
-    myIndex = imageListCopy.findIndex(item => {
-      return item.uri === uri;
-    });
-
-    if (myIndex >= 0) {
-      imageListCopy[myIndex].isOnline = false;
-      imageListCopy[myIndex].fileName = filename;
-    } else {
-      imageListCopy.push({
-        uri: uri,
-        isOnline: false,
-        fileName: filename,
-      });
-    }
-
-    imgProgressList.push({
-      uri: uri,
-      progress: 0,
-    });
-
-    console.log('ImageList', imageListCopy);
-    setImagesList(imageListCopy);
-
-    task.on('state_changed', async taskSnapshot => {
-      const percentage =
-        taskSnapshot.bytesTransferred / taskSnapshot.totalBytes;
-      const updatedImageList = imgProgressList.map(image => {
-        if (image.uri === uri) {
-          return {...image, progress: percentage};
-        }
-        if (percentage == 1) {
-          return {...image, progress: 1};
-        }
-        return image;
-      });
-      setImgProgressList(updatedImageList);
-    });
-
-    task.then(() => {
-      if (data.length) {
-        DeleteObjectFormRealm(uri);
-      }
-
-      const updatedImageList = imageListCopy.map(image => {
-        if (image.uri === uri) {
-          return {...image, isOnline: true};
-        }
-        return image;
-      });
-      setImagesList(updatedImageList);
-      console.log('Image uploaded to the bucket!');
-    });
-  };
-
   const uploadImage = async (image: Asset) => {
-    const netInfoState = await NetInfo.fetch();
-    const isConnected = netInfoState.isConnected;
-    if (isConnected) {
-      handleImageWithiFirebaseStorage(image.uri);
-    } else {
-      handleImageWithRealm(image);
-    }
+    handleImageWithRealm(image);
   };
 
   useEffect(() => {
@@ -283,8 +227,12 @@ const MainScreen: React.FC<MainScreenProps> = () => {
         console.log('Iamgess', JSON.stringify(imagesList));
         console.log('data', JSON.stringify(data));
 
+        const firstOnlineItem = data.find(item => !item.isOnline);
+
         if (data.length) {
-          await handleOfflineImagesWithiFirebaseStorage(data[0].url);
+          if (firstOnlineItem) {
+            await handleOfflineImagesWithiFirebaseStorage(firstOnlineItem.url);
+          }
         }
       } else if (!state.isConnected) {
         alreadyConnected = false;
@@ -323,28 +271,35 @@ const MainScreen: React.FC<MainScreenProps> = () => {
         }),
       );
 
+      const myOfflineData = data.filter(item => {
+        return !item.isOnline;
+      });
+
       const localUrls = await Promise.all(
-        data.map(async ref => {
+        myOfflineData.map(async ref => {
           const mobj: ImageSet = {
             uri: ref.url,
-            isOnline: false,
+            isOnline: ref.isOnline,
             fileName: ref.name,
           };
           return mobj;
         }),
       );
 
-      const finalUrls = [...localUrls, ...urls];
-      setImagesList(finalUrls);
-      console.log('imageRefsIF', 'called');
+      if (myOfflineData) {
+        const finalUrls = [...localUrls, ...urls];
+        setImagesList(finalUrls);
+      } else {
+        setImagesList(urls);
+      }
 
-      return finalUrls;
+      console.log('imageRefsIF', 'called');
     } else {
       const localUrls = await Promise.all(
         data.map(async ref => {
           const mobj: ImageSet = {
             uri: ref.url,
-            isOnline: false,
+            isOnline: ref.isOnline,
             fileName: ref.name,
           };
           return mobj;
@@ -369,6 +324,7 @@ const MainScreen: React.FC<MainScreenProps> = () => {
 
     if (item?.isOnline) {
       if (isConnected) {
+        DeleteObjectFormRealm(item?.uri);
         const imageRef = storage().ref(`images/${item.fileName}`);
         imageRef
           .delete()
@@ -398,11 +354,11 @@ const MainScreen: React.FC<MainScreenProps> = () => {
     return (
       <View style={styles.imageContainer}>
         <View>
-          <Image style={styles.image} source={{uri: item.uri}} />
+          <Image style={styles.image} source={{uri: item?.uri}} />
           <View style={styles.onlineOfflineIconPosition}>
             <Image
               source={
-                item.isOnline
+                item?.isOnline
                   ? require('../assets/online.png')
                   : require('../assets/offline.png')
               }
@@ -424,8 +380,8 @@ const MainScreen: React.FC<MainScreenProps> = () => {
           </TouchableOpacity>
         </View>
         {imgProgressList.map(imgProgress => {
-          if (imgProgress.uri == item.uri) {
-            if (!item.isOnline) {
+          if (imgProgress.uri == item?.uri) {
+            if (!item?.isOnline) {
               return (
                 <View style={styles.progressBarContainer}>
                   <ProgressView
@@ -449,6 +405,8 @@ const MainScreen: React.FC<MainScreenProps> = () => {
           <TextInput
             value={searchText}
             placeholder="Search image"
+            placeholderTextColor={'gray'}
+            style={styles.textInputStyle}
             onChangeText={text => {
               if (!text) {
                 setFilteredImageList([]);

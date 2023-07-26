@@ -7,9 +7,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'black',
   },
   listContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignSelf: 'flex-start',
     flex: 1,
+    marginHorizontal: 11,
   },
   searchBarContainer: {
     margin: 10,
@@ -97,6 +97,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'green',
     padding: 5,
     margin: 5,
+  },
+  textInputStyle: {
+    color: 'white',
   },
   iconSizes: {height: 23, width: 23},
   cancelIconPosition: {position: 'absolute', top: 5, right: 5},
