@@ -10,7 +10,6 @@ import {
   Modal,
   SafeAreaView,
   Platform,
-  Alert,
 } from 'react-native';
 import {
   launchCamera,
@@ -84,10 +83,11 @@ const MainScreen: React.FC<MainScreenProps> = () => {
     });
   };
 
-  const DeleteObjectFormRealm = (url: string) => {
+  const DeleteObjectFormRealm = async (url: string) => {
     const deleteIndex = data.findIndex(item => {
       return item.url === url;
     });
+    console.log(deleteIndex, 'deleteIndex');
     if (deleteIndex >= 0) {
       realm.write(() => {
         realm.delete(data[deleteIndex]);
@@ -95,33 +95,71 @@ const MainScreen: React.FC<MainScreenProps> = () => {
     }
   };
 
-  const handleImageWithRealm = (image: Asset) => {
+  const UpdateDeleteObjectinRealm = (
+    imageId: Realm.BSON.ObjectId,
+    isDeleted: boolean,
+  ) => {
+    console.log('id', imageId);
+
+    realm.write(() => {
+      const imageToUpdate = realm.objectForPrimaryKey<TestRealm>(
+        'TestRealm',
+        imageId,
+      );
+
+      if (imageToUpdate) {
+        imageToUpdate.isDeleted = isDeleted; // Update the 'isDeleted' property directly
+      }
+    });
+  };
+
+  const handleImageWithRealm = (image: Asset, isOnline: boolean) => {
     const timestamp = moment().format('YYYYMMDDHHmmssSSS');
     const filename = `IMG${timestamp}`;
 
-    console.log('Selected image URI: ', image.uri);
-    realm.write(() => {
-      realm.create('TestRealm', {
-        _id: new Realm.BSON.ObjectID(),
-        name: filename,
-        url: image.uri,
-        completed: true,
-        createdAt: new Date(),
-        isOnline: false,
-      });
+    let isThere = false;
 
+    isThere = data.some(item => {
+      return item.name === image.fileName;
+    });
+
+    if (!isThere) {
+      console.log('Selected image URI: ', image.uri);
+      realm.write(() => {
+        realm.create('TestRealm', {
+          _id: new Realm.BSON.ObjectID(),
+          name: isOnline ? image.fileName : filename,
+          url: image.uri,
+          completed: true,
+          createdAt: new Date(),
+          isOnline: isOnline,
+          isDeleted: false,
+        });
+
+        const imageListCopy = [...imagesList];
+
+        imageListCopy.push({
+          uri: image.uri,
+          isOnline: isOnline,
+          //progress: 0,
+          fileName: filename,
+        });
+
+        console.log('ImageList', imageListCopy);
+        setImagesList(imageListCopy);
+      });
+    } else {
       const imageListCopy = [...imagesList];
 
       imageListCopy.push({
         uri: image.uri,
-        isOnline: false,
-        //progress: 0,
+        isOnline: isOnline,
         fileName: filename,
       });
 
       console.log('ImageList', imageListCopy);
       setImagesList(imageListCopy);
-    });
+    }
   };
 
   const updateIsOnlineWithRealm = (
@@ -207,11 +245,52 @@ const MainScreen: React.FC<MainScreenProps> = () => {
   };
 
   const uploadImage = async (image: Asset) => {
-    handleImageWithRealm(image);
+    handleImageWithRealm(image, false);
   };
 
   useEffect(() => {
+    let alreadyConnected: boolean = false;
+
+    const unsubscribe = NetInfo.addEventListener(async state => {
+      if (state.isConnected && state.isInternetReachable && !alreadyConnected) {
+        alreadyConnected = true;
+        console.log('Iamgess', JSON.stringify(imagesList));
+        console.log('data', JSON.stringify(data));
+
+        const firstDeleteItem = data.find(item => item.isDeleted);
+
+        console.log('firstDeleteItem', JSON.stringify(firstDeleteItem));
+
+        if (data.length) {
+          if (firstDeleteItem) {
+            console.log('firstDeleteItem2', JSON.stringify(firstDeleteItem));
+
+            await deleteOfflineDeletedFile(firstDeleteItem);
+          }
+        }
+      } else if (!state.isConnected) {
+        alreadyConnected = false;
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [data]);
+
+  useEffect(() => {
     const fetchData = async () => {
+      const firstDeleteItem = data.find(item => item.isDeleted);
+
+      console.log('useEffectDeleteItem', JSON.stringify(firstDeleteItem));
+
+      if (data.length) {
+        if (firstDeleteItem) {
+          console.log('useEffectDeleteItem2', JSON.stringify(firstDeleteItem));
+
+          await deleteOfflineDeletedFile(firstDeleteItem);
+        }
+      }
+
       await fetchImagesFromStorage();
     };
 
@@ -228,12 +307,23 @@ const MainScreen: React.FC<MainScreenProps> = () => {
         console.log('data', JSON.stringify(data));
 
         const firstOnlineItem = data.find(item => !item.isOnline);
+        //const firstDeleteItem = data.find(item => item.isDeleted);
+
+        //console.log('firstDeleteItem', JSON.stringify(firstDeleteItem));
 
         if (data.length) {
           if (firstOnlineItem) {
             await handleOfflineImagesWithiFirebaseStorage(firstOnlineItem.url);
           }
         }
+
+        // if (data.length) {
+        //   if (firstDeleteItem) {
+        //     console.log('firstDeleteItem2', JSON.stringify(firstDeleteItem));
+
+        //     await deleteOfflineDeletedFile(firstDeleteItem);
+        //   }
+        // }
       } else if (!state.isConnected) {
         alreadyConnected = false;
       }
@@ -267,12 +357,14 @@ const MainScreen: React.FC<MainScreenProps> = () => {
             fileName: await ref.fullPath.replace('images/', ''),
           };
 
+          handleImageWithRealm(mobj, true);
+
           return mobj;
         }),
       );
 
       const myOfflineData = data.filter(item => {
-        return !item.isOnline;
+        return !item.isOnline && !item.isDeleted;
       });
 
       const localUrls = await Promise.all(
@@ -295,8 +387,12 @@ const MainScreen: React.FC<MainScreenProps> = () => {
 
       console.log('imageRefsIF', 'called');
     } else {
+      const myOfflineData = data.filter(item => {
+        return !item.isDeleted;
+      });
+
       const localUrls = await Promise.all(
-        data.map(async ref => {
+        myOfflineData.map(async ref => {
           const mobj: ImageSet = {
             uri: ref.url,
             isOnline: ref.isOnline,
@@ -306,10 +402,30 @@ const MainScreen: React.FC<MainScreenProps> = () => {
         }),
       );
 
-      setImagesList(localUrls);
-      console.log('imageRefsElse', 'call');
+      if (myOfflineData) {
+        setImagesList(localUrls);
+      }
 
-      return localUrls;
+      console.log('imageRefsElse', 'call');
+    }
+  };
+
+  const deleteOfflineDeletedFile = async (item: any) => {
+    const netInfoState = await NetInfo.fetch();
+    const isConnected = netInfoState.isConnected;
+    if (isConnected) {
+      console.log('deleteOfflineDeletedFile', JSON.stringify(item));
+
+      const imageRef = storage().ref(`images/${item.name}`);
+      imageRef
+        .delete()
+        .then(() => {
+          DeleteObjectFormRealm(item?.url);
+          console.log('Image deleted successfully.');
+        })
+        .catch(error => {
+          console.log('Error deleting image:', error);
+        });
     }
   };
 
@@ -329,17 +445,31 @@ const MainScreen: React.FC<MainScreenProps> = () => {
         imageRef
           .delete()
           .then(() => {
-            console.log('Image deleted successfully.');
+            console.log('Directly Image deleted successfully.');
           })
           .catch(error => {
-            console.log('Error deleting image:', error);
+            console.log('Error deleting imageDirectly:', error);
           });
         const updatedImageList = imageListCopy.filter(i => {
           return i.uri !== item?.uri;
         });
         setImagesList(updatedImageList);
       } else {
-        Alert.alert('No internet Connection to remove the online image');
+        console.log('datacop', data);
+
+        const myObject = data.find(dataItem => {
+          return dataItem.url === item?.uri;
+        });
+
+        console.log('datacop1', myObject);
+
+        const objectIdToUpdate = new Realm.BSON.ObjectId(myObject?._id);
+        UpdateDeleteObjectinRealm(objectIdToUpdate, true);
+
+        const updatedImageList = imageListCopy.filter(i => {
+          return i.uri !== item?.uri;
+        });
+        setImagesList(updatedImageList);
       }
     } else {
       DeleteObjectFormRealm(item?.uri);
