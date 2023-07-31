@@ -4,6 +4,7 @@ import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import SplashScreen from './src/screens/SplashScreen';
 import MainScreen from './src/screens/MainScreen';
 import {realmContext} from './src/screens/Realm';
+import {ProgressProvider} from './src/context/ContextProgress';
 
 type RootStackParamList = {
   SplashScreen: undefined;
@@ -17,23 +18,25 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 function App() {
   return (
-    <RealmProvider>
-      <NavigationContainer>
-        <Stack.Navigator>
-          {/* Set headerShown to false to remove the header for SplashScreen */}
-          <Stack.Screen
-            name="SplashScreen"
-            component={SplashScreen}
-            options={{headerShown: false}}
-          />
-          <Stack.Screen
-            name="MainScreen"
-            component={MainScreen}
-            options={{headerShown: false}}
-          />
-        </Stack.Navigator>
-      </NavigationContainer>
-    </RealmProvider>
+    <ProgressProvider>
+      <RealmProvider>
+        <NavigationContainer>
+          <Stack.Navigator>
+            {/* Set headerShown to false to remove the header for SplashScreen */}
+            <Stack.Screen
+              name="SplashScreen"
+              component={SplashScreen}
+              options={{headerShown: false}}
+            />
+            <Stack.Screen
+              name="MainScreen"
+              component={MainScreen}
+              options={{headerShown: false}}
+            />
+          </Stack.Navigator>
+        </NavigationContainer>
+      </RealmProvider>
+    </ProgressProvider>
   );
 }
 

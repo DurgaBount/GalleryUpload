@@ -30,14 +30,9 @@ interface ImageSet {
   isOnline: boolean;
   fileName: string;
 }
-interface ImageProgress {
-  uri: any;
-  progress: number;
-}
 const {useQuery, useRealm} = realmContext;
 
 const MainScreen: React.FC<MainScreenProps> = () => {
-  const [imgProgressList, setImgProgressList] = useState<ImageProgress[]>([]);
   const [imagesList, setImagesList] = useState<ImageSet[]>([]);
   const [filteredImageList, setFilteredImageList] = useState<ImageSet[]>([]);
   const [isModalVisible, setModalVisible] = useState(false);
@@ -55,7 +50,6 @@ const MainScreen: React.FC<MainScreenProps> = () => {
   const openCamera = () => {
     launchCamera({mediaType: 'photo'}, (res: ImagePickerResponse) => {
       if (res.assets) {
-        console.log('CaptureRes:', JSON.stringify(res.assets[0].uri));
         const image = res.assets[0];
         uploadImage(image);
         toggleModal();
@@ -69,8 +63,6 @@ const MainScreen: React.FC<MainScreenProps> = () => {
 
   const openGallery = () => {
     launchImageLibrary({mediaType: 'photo'}, (res: ImagePickerResponse) => {
-      console.log('PickingPictureRes:', JSON.stringify(res));
-
       if (res.assets) {
         const image = res.assets[0];
         uploadImage(image);
@@ -87,7 +79,6 @@ const MainScreen: React.FC<MainScreenProps> = () => {
     const deleteIndex = data.findIndex(item => {
       return item.url === url;
     });
-    console.log(deleteIndex, 'deleteIndex');
     if (deleteIndex >= 0) {
       realm.write(() => {
         realm.delete(data[deleteIndex]);
@@ -99,8 +90,6 @@ const MainScreen: React.FC<MainScreenProps> = () => {
     imageId: Realm.BSON.ObjectId,
     isDeleted: boolean,
   ) => {
-    console.log('id', imageId);
-
     realm.write(() => {
       const imageToUpdate = realm.objectForPrimaryKey<TestRealm>(
         'TestRealm',
@@ -124,7 +113,6 @@ const MainScreen: React.FC<MainScreenProps> = () => {
     });
 
     if (!isThere) {
-      console.log('Selected image URI: ', image.uri);
       realm.write(() => {
         realm.create('TestRealm', {
           _id: new Realm.BSON.ObjectID(),
@@ -134,6 +122,7 @@ const MainScreen: React.FC<MainScreenProps> = () => {
           createdAt: new Date(),
           isOnline: isOnline,
           isDeleted: false,
+          progress: 0,
         });
 
         const imageListCopy = [...imagesList];
@@ -156,8 +145,6 @@ const MainScreen: React.FC<MainScreenProps> = () => {
         isOnline: isOnline,
         fileName: filename,
       });
-
-      console.log('ImageList', imageListCopy);
       setImagesList(imageListCopy);
     }
   };
@@ -178,6 +165,22 @@ const MainScreen: React.FC<MainScreenProps> = () => {
     });
   };
 
+  const updateProgressWithRealm = (
+    imageId: Realm.BSON.ObjectId,
+    progress: number,
+  ) => {
+    realm.write(() => {
+      const imageToUpdate = realm.objectForPrimaryKey<TestRealm>(
+        'TestRealm',
+        imageId,
+      );
+
+      if (imageToUpdate) {
+        imageToUpdate.progress = progress; // Update the 'isOnline' property directly
+      }
+    });
+  };
+
   const handleOfflineImagesWithiFirebaseStorage = (uri: any) => {
     let imageListCopy = [...imagesList];
     const image: any = imageListCopy.find(item => {
@@ -194,28 +197,18 @@ const MainScreen: React.FC<MainScreenProps> = () => {
     const storageRef = storage().ref('images').child(image.fileName);
     const task = storageRef.putFile(pathToFile);
 
-    const imgProgressListCopy = [...imgProgressList];
-    imgProgressListCopy.push({
-      uri: uri,
-      progress: 0,
-    });
-
-    console.log('ImageList', imageListCopy);
-    setImgProgressList(imgProgressListCopy);
-
     task.on('state_changed', taskSnapshot => {
       const percentage =
         taskSnapshot.bytesTransferred / taskSnapshot.totalBytes;
 
       console.log('percentage', percentage);
 
-      const updatedImageList = imgProgressListCopy.map(image => {
-        if (image.uri === uri) {
-          return {...image, progress: percentage};
-        }
-        return image;
+      const myObject = data.find(item => {
+        return item.url === uri;
       });
-      setImgProgressList(updatedImageList);
+
+      const objectIdToUpdate = new Realm.BSON.ObjectId(myObject?._id);
+      updateProgressWithRealm(objectIdToUpdate, percentage);
     });
 
     task.then(() => {
@@ -232,15 +225,10 @@ const MainScreen: React.FC<MainScreenProps> = () => {
         }
         return image;
       });
-      const updatedImageListForProgress = imgProgressListCopy.map(image => {
-        if (image.uri === uri) {
-          return {...image, progress: 1};
-        }
-        return image;
-      });
-      setImgProgressList(updatedImageListForProgress);
+
+      updateProgressWithRealm(objectIdToUpdate, 1);
+
       setImagesList(updatedImageList);
-      console.log('Offlie Image uploaded to the bucket!');
     });
   };
 
@@ -254,17 +242,11 @@ const MainScreen: React.FC<MainScreenProps> = () => {
     const unsubscribe = NetInfo.addEventListener(async state => {
       if (state.isConnected && state.isInternetReachable && !alreadyConnected) {
         alreadyConnected = true;
-        console.log('Iamgess', JSON.stringify(imagesList));
-        console.log('data', JSON.stringify(data));
 
         const firstDeleteItem = data.find(item => item.isDeleted);
 
-        console.log('firstDeleteItem', JSON.stringify(firstDeleteItem));
-
         if (data.length) {
           if (firstDeleteItem) {
-            console.log('firstDeleteItem2', JSON.stringify(firstDeleteItem));
-
             await deleteOfflineDeletedFile(firstDeleteItem);
           }
         }
@@ -281,12 +263,8 @@ const MainScreen: React.FC<MainScreenProps> = () => {
     const fetchData = async () => {
       const firstDeleteItem = data.find(item => item.isDeleted);
 
-      console.log('useEffectDeleteItem', JSON.stringify(firstDeleteItem));
-
       if (data.length) {
         if (firstDeleteItem) {
-          console.log('useEffectDeleteItem2', JSON.stringify(firstDeleteItem));
-
           await deleteOfflineDeletedFile(firstDeleteItem);
         }
       }
@@ -303,27 +281,14 @@ const MainScreen: React.FC<MainScreenProps> = () => {
     const unsubscribe = NetInfo.addEventListener(async state => {
       if (state.isConnected && state.isInternetReachable && !alreadyConnected) {
         alreadyConnected = true;
-        console.log('Iamgess', JSON.stringify(imagesList));
-        console.log('data', JSON.stringify(data));
 
         const firstOnlineItem = data.find(item => !item.isOnline);
-        //const firstDeleteItem = data.find(item => item.isDeleted);
-
-        //console.log('firstDeleteItem', JSON.stringify(firstDeleteItem));
 
         if (data.length) {
           if (firstOnlineItem) {
             await handleOfflineImagesWithiFirebaseStorage(firstOnlineItem.url);
           }
         }
-
-        // if (data.length) {
-        //   if (firstDeleteItem) {
-        //     console.log('firstDeleteItem2', JSON.stringify(firstDeleteItem));
-
-        //     await deleteOfflineDeletedFile(firstDeleteItem);
-        //   }
-        // }
       } else if (!state.isConnected) {
         alreadyConnected = false;
       }
@@ -343,8 +308,6 @@ const MainScreen: React.FC<MainScreenProps> = () => {
   const fetchImagesFromStorage = async () => {
     const netInfoState = await NetInfo.fetch();
     const isConnected = netInfoState.isConnected;
-
-    console.log('imageRefs', 'called');
 
     if (isConnected) {
       const imageRefs = await storage().ref().child('images/').listAll();
@@ -384,8 +347,6 @@ const MainScreen: React.FC<MainScreenProps> = () => {
       } else {
         setImagesList(urls);
       }
-
-      console.log('imageRefsIF', 'called');
     } else {
       const myOfflineData = data.filter(item => {
         return !item.isDeleted;
@@ -405,8 +366,6 @@ const MainScreen: React.FC<MainScreenProps> = () => {
       if (myOfflineData) {
         setImagesList(localUrls);
       }
-
-      console.log('imageRefsElse', 'call');
     }
   };
 
@@ -414,8 +373,6 @@ const MainScreen: React.FC<MainScreenProps> = () => {
     const netInfoState = await NetInfo.fetch();
     const isConnected = netInfoState.isConnected;
     if (isConnected) {
-      console.log('deleteOfflineDeletedFile', JSON.stringify(item));
-
       const imageRef = storage().ref(`images/${item.name}`);
       imageRef
         .delete()
@@ -445,7 +402,7 @@ const MainScreen: React.FC<MainScreenProps> = () => {
         imageRef
           .delete()
           .then(() => {
-            console.log('Directly Image deleted successfully.');
+            //console.log('Directly Image deleted successfully.');
           })
           .catch(error => {
             console.log('Error deleting imageDirectly:', error);
@@ -455,13 +412,9 @@ const MainScreen: React.FC<MainScreenProps> = () => {
         });
         setImagesList(updatedImageList);
       } else {
-        console.log('datacop', data);
-
         const myObject = data.find(dataItem => {
           return dataItem.url === item?.uri;
         });
-
-        console.log('datacop1', myObject);
 
         const objectIdToUpdate = new Realm.BSON.ObjectId(myObject?._id);
         UpdateDeleteObjectinRealm(objectIdToUpdate, true);
@@ -509,15 +462,15 @@ const MainScreen: React.FC<MainScreenProps> = () => {
             />
           </TouchableOpacity>
         </View>
-        {imgProgressList.map(imgProgress => {
-          if (imgProgress.uri == item?.uri) {
+        {data?.map((dataItem: any) => {
+          if (dataItem?.url == item?.uri) {
             if (!item?.isOnline) {
               return (
                 <View style={styles.progressBarContainer}>
                   <ProgressView
                     progressTintColor="orange"
                     trackTintColor="blue"
-                    progress={imgProgress.progress}
+                    progress={dataItem.progress}
                   />
                 </View>
               );

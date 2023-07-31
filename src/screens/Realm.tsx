@@ -9,6 +9,8 @@ export class TestRealm extends Realm.Object {
   createdAt!: Date;
   isOnline!: boolean;
   isDeleted!: boolean;
+  progress!: number;
+
   static schema = {
     name: 'TestRealm',
     properties: {
@@ -19,6 +21,7 @@ export class TestRealm extends Realm.Object {
       createdAt: 'date',
       isOnline: {type: 'bool', default: false},
       isDeleted: {type: 'bool', default: false},
+      progress: 'float',
     },
     primaryKey: '_id', // Set the primary key for the collection
   };
